@@ -1,15 +1,21 @@
 using Backend.Application;
+using Backend.Application.Common.Helpers;
 using Backend.Application.Common.Settings;
+using Backend.Api.Middleware;
 using Backend.Domain.Entities;
 using Backend.Infrastructure.Persistence;
 using Backend.Infrastructure.Filters;
+using HealthChecks.UI.Client;
 using MediatR;
 
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 using System.Text;
 
@@ -81,6 +87,19 @@ builder.Services.AddSwaggerGen(options =>
 
 // CQRS (MediatR)
 builder.Services.AddMediatR(typeof(AssemblyReference).Assembly);
+
+// Health checks
+builder.Services.AddHealthChecks();
+
+// Redis cache
+builder.Services.Configure<RedisSettings>(builder.Configuration.GetSection("Redis"));
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = builder.Configuration["Redis:Configuration"] ?? "localhost:6379";
+    options.InstanceName = builder.Configuration["Redis:InstanceName"] ?? "BackendCache:";
+});
+
+builder.Services.AddScoped<CacheService>();
 
 // DB connection string 
 var databaseProvider = builder.Configuration.GetValue<string>("DatabaseProvider")?.Trim().ToLowerInvariant();
@@ -170,6 +189,8 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
+app.UseMiddleware<ExceptionHandlingMiddleware>();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -178,12 +199,37 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseRouting();
+
 app.UseCors(corsPolicyName);
 
 app.UseAuthentication();
 
 app.UseAuthorization();
 
-app.MapControllers();
+app.UseEndpoints(endpoints =>
+{
+    endpoints.MapControllers();
+
+    endpoints.MapHealthChecks(
+        "/api/v1/health",
+        new HealthCheckOptions
+        {
+            ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+        }
+    );
+
+    endpoints.MapGet("/{**path}", async context =>
+    {
+        JObject jObject = new JObject
+        {
+            { "health", "Done creating, Navigate to /health to see the health status." },
+            { "ready", "Navigate to /health/ready to see the readiness status." },
+            { "live", "Navigate to /health/live to see the liveness status." }
+        };
+
+        await context.Response.WriteAsync(JsonConvert.SerializeObject(jObject));
+    });
+});
 
 app.Run();
