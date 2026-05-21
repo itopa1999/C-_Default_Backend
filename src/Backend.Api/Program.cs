@@ -1,11 +1,15 @@
 using Backend.Application;
 using Backend.Application.Common.Settings;
+using Backend.Domain.Entities;
 using Backend.Infrastructure.Persistence;
+using Backend.Infrastructure.Filters;
 using MediatR;
 
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 
 using System.Text;
 
@@ -14,19 +18,111 @@ var builder = WebApplication.CreateBuilder(args);
 // Controllers
 builder.Services.AddControllers();
 
+// CORS
+var corsPolicyName = "CorsPolicy";
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>()
+    ?? Array.Empty<string>();
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(corsPolicyName, policy =>
+    {
+        if (allowedOrigins.Length > 0)
+        {
+            policy
+                .WithOrigins(allowedOrigins)
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        }
+        else
+        {
+            policy
+                .AllowAnyOrigin()
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        }
+    });
+});
+
 // Swagger
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Backend API",
+        Version = "v1",
+        Description = "Backend API"
+    });
+
+    options.SwaggerDoc("v2", new OpenApiInfo
+    {
+        Title = "Backend API",
+        Version = "v2",
+        Description = "Backend API v2"
+    });
+
+    options.SwaggerDoc("v3", new OpenApiInfo
+    {
+        Title = "Backend API",
+        Version = "v3",
+        Description = "Backend API v3"
+    });
+
+    options.CustomSchemaIds(type => type.FullName);
+    options.ResolveConflictingActions(c => c.First());
+
+    options.OperationFilter<SwaggerFilter.RemoveVersionFromParameter>();
+    options.DocumentFilter<SwaggerFilter.ReplaceVersionWithExactValueInPath>();
+    options.SchemaFilter<SwaggerIgnoreFilter>();
+});
 
 // CQRS (MediatR)
 builder.Services.AddMediatR(typeof(AssemblyReference).Assembly);
 
 // DB connection string 
+var databaseProvider = builder.Configuration.GetValue<string>("DatabaseProvider")?.Trim().ToLowerInvariant();
+
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection")
-    )
-);
+{
+    if (databaseProvider is "postgres" or "postgresql" or "npgsql")
+    {
+        var connection = builder.Configuration.GetConnectionString("Postgres");
+        if (string.IsNullOrWhiteSpace(connection))
+        {
+            throw new InvalidOperationException("Postgres connection string is not configured.");
+        }
+
+        options.UseNpgsql(connection);
+    }
+    else
+    {
+        var connection = builder.Configuration.GetConnectionString("SqlServer")
+            ?? builder.Configuration.GetConnectionString("DefaultConnection");
+
+        if (string.IsNullOrWhiteSpace(connection))
+        {
+            throw new InvalidOperationException("SQL Server connection string is not configured.");
+        }
+
+        options.UseSqlServer(connection);
+    }
+});
+
+// Identity
+builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
+{
+    options.Password.RequireDigit = true;
+    options.Password.RequiredLength = 8;
+    options.Password.RequireNonAlphanumeric = false;
+    options.Password.RequireUppercase = true;
+    options.Password.RequireLowercase = true;
+    options.User.RequireUniqueEmail = true;
+})
+.AddEntityFrameworkStores<AppDbContext>()
+.AddDefaultTokenProviders();
 
 // JWT Authentication
 builder.Services.Configure<JwtSettings>(
@@ -81,6 +177,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors(corsPolicyName);
 
 app.UseAuthentication();
 

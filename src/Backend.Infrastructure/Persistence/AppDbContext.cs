@@ -1,16 +1,17 @@
 using Backend.Domain.Entities;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Backend.Domain.Common;
+
 namespace Backend.Infrastructure.Persistence;
 
-public class AppDbContext : DbContext
+public class AppDbContext : IdentityDbContext<User, IdentityRole<int>, int>
 {
     public AppDbContext(DbContextOptions<AppDbContext> options)
         : base(options)
     {
     }
-
-    public DbSet<User> Users { get; set; }
 
     public override int SaveChanges()
     {
@@ -26,11 +27,13 @@ public class AppDbContext : DbContext
 
     private void ApplyAuditRules()
     {
-        var entries = ChangeTracker.Entries<BaseEntity>();
+        var entries = ChangeTracker.Entries()
+            .Where(entry => entry.Entity is IBaseEntity)
+            .ToList();
 
         foreach (var entry in entries)
         {
-            var entity = entry.Entity;
+            var entity = (IBaseEntity)entry.Entity;
 
             switch (entry.State)
             {
@@ -43,7 +46,6 @@ public class AppDbContext : DbContext
                     break;
 
                 case EntityState.Deleted:
-                    // SOFT DELETE
                     entry.State = EntityState.Modified;
                     entity.IsDeleted = true;
                     entity.DeletedAt = DateTime.Now;
