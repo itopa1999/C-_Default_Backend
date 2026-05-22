@@ -22,10 +22,11 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
-    [ProducesResponseType(typeof(BaseResult), (int)HttpStatusCode.OK)]
+    [ProducesResponseType(typeof(BaseResult<List<RegisterUserDto>>), (int)HttpStatusCode.OK)]
     [ProducesResponseType(typeof(BaseResult), (int)HttpStatusCode.BadRequest)]
-    public async Task<ActionResult<BaseResult>> Register([FromBody] RegisterUserDto dto)
+    public async Task<ActionResult<BaseResult>> RegisterUSer([FromBody] RegisterUserDto dto)
     {
+
         var command = new RegisterUserCommand.Command
         {
             FirstName = dto.FirstName,
@@ -36,6 +37,20 @@ public class AuthController : ControllerBase
 
         var result = await _mediator.Send(command);
 
+        return result.ToActionResult();
+    }
+
+    [HttpPost("login")]
+    [ProducesResponseType(typeof(BaseResult<AuthResponseDto>), (int)HttpStatusCode.OK)]
+    [ProducesResponseType(typeof(BaseResult), (int)HttpStatusCode.BadRequest)]
+    public async Task<ActionResult<BaseResult>> LoginUser([FromBody] LoginUserDto dto)
+    {
+        var command = new LoginUserCommand.Command
+        {
+            Email = dto.Email,
+            Password = dto.Password
+        };
+        var result = await _mediator.Send(command);
         return result.ToActionResult();
     }
 }

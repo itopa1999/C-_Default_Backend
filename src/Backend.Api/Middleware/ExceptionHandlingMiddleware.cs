@@ -43,8 +43,8 @@ public class ExceptionHandlingMiddleware
 
         var result = new BaseResult(
             statusCode: HttpStatusCode.InternalServerError,
-            message: "An error occurred; please try again later",
-            data: null
+            message: "An error occurred; please try again later"
+            
         );
 
         context.Response.Headers["X-Request-Id"] = result.RequestId;

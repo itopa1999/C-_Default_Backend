@@ -11,29 +11,31 @@ public class BaseResult
 
     [JsonPropertyName("message")]
     [JsonPropertyOrder(2)]
-    public string Message { get; set; } = "An error occurred; please try again later";
+    public string Message { get; set; } =
+        "An error occurred; please try again later";
 
     [JsonPropertyName("is_success")]
     [JsonPropertyOrder(3)]
-    public bool IsSuccess => ((int)StatusCode) >= 200 && ((int)StatusCode) < 300;
-
-    [JsonPropertyName("data")]
-    [JsonPropertyOrder(4)]
-    public object? Data { get; set; }
+    public bool IsSuccess =>
+        ((int)StatusCode) >= 200 &&
+        ((int)StatusCode) < 300;
 
     [JsonPropertyName("status_code")]
     [JsonPropertyOrder(5)]
-    public HttpStatusCode StatusCode { get; set; } = HttpStatusCode.InternalServerError;
+    public HttpStatusCode StatusCode { get; set; } =
+        HttpStatusCode.InternalServerError;
 
     public BaseResult()
     {
     }
 
-    public BaseResult(HttpStatusCode statusCode = HttpStatusCode.InternalServerError, string message = "An error occurred; please try again later", object? data = null, string? requestId = null)
+    public BaseResult(
+        HttpStatusCode statusCode = HttpStatusCode.InternalServerError,
+        string message = "An error occurred; please try again later",
+        string? requestId = null)
     {
         StatusCode = statusCode;
         Message = message;
-        Data = data;
         RequestId = requestId ?? Guid.NewGuid().ToString();
     }
 
@@ -44,8 +46,37 @@ public class BaseResult
             ["request_id"] = RequestId,
             ["message"] = Message,
             ["is_success"] = IsSuccess,
-            ["status_code"] = (int)StatusCode,
-            ["data"] = Data
+            ["status_code"] = (int)StatusCode
         };
+    }
+}
+
+public class BaseResult<T> : BaseResult
+{
+    [JsonPropertyName("data")]
+    [JsonPropertyOrder(4)]
+    public T? Data { get; set; }
+
+    public BaseResult()
+    {
+    }
+
+    public BaseResult(
+        HttpStatusCode statusCode = HttpStatusCode.InternalServerError,
+        string message = "An error occurred; please try again later",
+        T? data = default,
+        string? requestId = null)
+        : base(statusCode, message, requestId)
+    {
+        Data = data;
+    }
+
+    public override Dictionary<string, object?> ToDictionary()
+    {
+        var result = base.ToDictionary();
+
+        result["data"] = Data;
+
+        return result;
     }
 }

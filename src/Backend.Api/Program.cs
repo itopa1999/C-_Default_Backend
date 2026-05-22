@@ -18,11 +18,37 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 using System.Text;
+using Backend.Application.Interfaces;
+using Backend.Infrastructure.Authentication;
+using Microsoft.AspNetCore.Mvc;
+using Backend.Application.Common.Results;
+using System.Net;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Controllers
 builder.Services.AddControllers();
+
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var errors = context.ModelState.Values
+            .SelectMany(x => x.Errors)
+            .Select(x => x.ErrorMessage)
+            .Where(x => !string.IsNullOrWhiteSpace(x));
+
+        var result = new BaseResult(
+            statusCode: HttpStatusCode.BadRequest,
+            message: string.Join(" | ", errors)
+        );
+
+        return new ObjectResult(result)
+        {
+            StatusCode = 400
+        };
+    };
+});
 
 // CORS
 var corsPolicyName = "CorsPolicy";
@@ -62,28 +88,38 @@ builder.Services.AddApiVersioning(options =>
 });
 
 builder.Services.AddEndpointsApiExplorer();
+
 builder.Services.AddSwaggerGen(options =>
 {
-    options.SwaggerDoc("v1", new OpenApiInfo
-    {
-        Title = "Backend API",
-        Version = "v1",
-        Description = "Backend API"
-    });
+    options.SwaggerDoc(
+        "v1",
+        new OpenApiInfo
+        {
+            Title = "Backend Service API",
+            Version = "v1",
+            Description = "Backend Service v1"
+        }
+    );
 
-    options.SwaggerDoc("v2", new OpenApiInfo
-    {
-        Title = "Backend API",
-        Version = "v2",
-        Description = "Backend API v2"
-    });
+    options.SwaggerDoc(
+        "v2",
+        new OpenApiInfo
+        {
+            Title = "Backend Service API",
+            Version = "v2",
+            Description = "Backend Service v2"
+        }
+    );
 
-    options.SwaggerDoc("v3", new OpenApiInfo
-    {
-        Title = "Backend API",
-        Version = "v3",
-        Description = "Backend API v3"
-    });
+    options.SwaggerDoc(
+        "v3",
+        new OpenApiInfo
+        {
+            Title = "Backend Service API",
+            Version = "v3",
+            Description = "Backend Service API v3"
+        }
+    );
 
     options.CustomSchemaIds(type => type.FullName);
     options.ResolveConflictingActions(c => c.First());
@@ -91,7 +127,34 @@ builder.Services.AddSwaggerGen(options =>
     options.OperationFilter<SwaggerFilter.RemoveVersionFromParameter>();
     options.DocumentFilter<SwaggerFilter.ReplaceVersionWithExactValueInPath>();
     options.SchemaFilter<SwaggerIgnoreFilter>();
+
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Enter JWT Token"
+    });
+
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
 });
+
 
 // CQRS (MediatR)
 builder.Services.AddMediatR(typeof(AssemblyReference).Assembly);
@@ -155,6 +218,8 @@ builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("JwtSettings")
 );
+
+builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 
 var jwtSettings = builder.Configuration
     .GetSection("JwtSettings")
