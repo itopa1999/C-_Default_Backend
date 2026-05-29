@@ -3,7 +3,7 @@ using Backend.Application.Common.Helpers;
 using Backend.Application.Common.Settings;
 using Backend.Api.Middleware;
 using Backend.Domain.Entities;
-using Backend.Infrastructure.Persistence;
+using Backend.Domain.Persistence;
 using Backend.Infrastructure.Filters;
 using HealthChecks.UI.Client;
 using MediatR;
@@ -23,6 +23,7 @@ using Backend.Infrastructure.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using Backend.Application.Common.Results;
 using System.Net;
+using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -170,7 +171,6 @@ builder.Services.AddStackExchangeRedisCache(options =>
     options.InstanceName = builder.Configuration["Redis:InstanceName"] ?? "BackendCache:";
 });
 
-builder.Services.AddScoped<CacheService>();
 
 // DB connection string 
 var databaseProvider = builder.Configuration.GetValue<string>("DatabaseProvider")?.Trim().ToLowerInvariant();
@@ -211,6 +211,7 @@ builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
     options.Password.RequireLowercase = true;
     options.User.RequireUniqueEmail = true;
 })
+.AddRoles<IdentityRole<int>>()
 .AddEntityFrameworkStores<AppDbContext>()
 .AddDefaultTokenProviders();
 
@@ -219,7 +220,6 @@ builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("JwtSettings")
 );
 
-builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 
 var jwtSettings = builder.Configuration
     .GetSection("JwtSettings")
@@ -251,7 +251,10 @@ builder.Services.AddAuthentication(options =>
 
         ValidateLifetime = true,
 
-        ClockSkew = TimeSpan.Zero
+        ClockSkew = TimeSpan.Zero,
+
+        RoleClaimType = ClaimTypes.Role,
+        NameClaimType = ClaimTypes.NameIdentifier
     };
 });
 
@@ -259,6 +262,9 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 
 
+builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
+builder.Services.AddScoped<CacheService>();
+builder.Services.AddScoped<ITokenService, TokenService>();
 
 var app = builder.Build();
 
@@ -268,6 +274,11 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+}
+
+using (var scope = app.Services.CreateScope())
+{
+    await IdentitySeeder.SeedRolesAsync(scope.ServiceProvider);
 }
 
 app.UseHttpsRedirection();
